@@ -249,6 +249,11 @@ class PluginManager:
                 await restart_webhelper()
                 await sleep(1) # To give CEF enough time to close down the websocket
                 return # We'll catch the next tab in the main loop
+            if self.webhelper_crash_count < 3:
+                try:
+                    await tab.store_vite_modules()
+                except Exception:
+                    logger.error("Failed to store the modules of the Vite build of Steam\n" + format_exc())
             await tab.evaluate_js(create_inject_script("index.js" if self.webhelper_crash_count < 3 else "fallback.js"), False, False, False)
             if self.webhelper_crash_count > 2:
                 self.reinject = False

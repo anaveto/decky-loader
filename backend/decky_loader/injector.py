@@ -13,6 +13,15 @@ BASE_ADDRESS = "http://localhost:8080"
 
 logger = getLogger("Injector")
 
+def _call_argument(remote_object: Dict[str, Any]) -> Dict[str, Any]:
+    if "objectId" in remote_object:
+        return {"objectId": remote_object["objectId"]}
+    if "unserializableValue" in remote_object:
+        return {"unserializableValue": remote_object["unserializableValue"]}
+    if "value" in remote_object:
+        return {"value": remote_object["value"]}
+    return {}
+
 class _TabResponse(TypedDict):
     title: str
     id: str
@@ -79,6 +88,55 @@ class Tab:
             if manage_socket:
                 await self.close_websocket()
         return res
+
+    async def store_vite_modules(self) -> bool:
+        """
+        Vite builds of Steam have no webpack module registry. Copies the top-level bindings of Steam's main chunk
+        to window.deckyViteModules, where @decky/ui looks for modules. Returns False for webpack builds of Steam.
+        """
+        async with ClientSession() as client:
+            # The module scope is larger than the default message size limit
+            async with client.ws_connect(self.ws_url, max_msg_size=0) as websocket:
+                cmd_id = 0
+
+                async def send(method: str, **params: Any) -> Dict[str, Any]:
+                    nonlocal cmd_id
+                    cmd_id += 1
+                    await websocket.send_json({"id": cmd_id, "method": method, "params": params})
+                    async for message in websocket:
+                        data = message.json()
+                        if data.get("id") == cmd_id:
+                            if "error" in data:
+                                raise RuntimeError(f"{method} failed: {data['error']}")
+                            return data["result"]
+                    raise RuntimeError(f"{method} failed: the websocket closed")
+
+                build = ""
+                for _ in range(240):
+                    build = (await send("Runtime.evaluate", returnByValue=True,
+                        expression="window.webpackChunksteamui ? 'webpack' : window.App?.constructor ? 'vite' : ''"))["result"].get("value")
+                    if build:
+                        break
+                    await sleep(0.25)
+                if build != "vite":
+                    return False
+
+                group = "decky-vite-modules"
+                app = await send("Runtime.evaluate", expression="App.constructor", objectGroup=group)
+                internal = (await send("Runtime.getProperties", objectId=app["result"]["objectId"], ownProperties=True))["internalProperties"]
+                scopes = next(p["value"]["objectId"] for p in internal if p["name"] == "[[Scopes]]")
+                scope = next(p["value"]["objectId"] for p in (await send("Runtime.getProperties", objectId=scopes, ownProperties=True))["result"]
+                             if p["value"].get("description") == "Module")
+                bindings = [b for b in (await send("Runtime.getProperties", objectId=scope, ownProperties=True))["result"] if "value" in b]
+                target = (await send("Runtime.evaluate", expression="window.deckyViteModules = {}", objectGroup=group))["result"]["objectId"]
+                for start in range(0, len(bindings), 1000):
+                    batch = bindings[start:start + 1000]
+                    await send("Runtime.callFunctionOn", objectId=target, objectGroup=group,
+                        functionDeclaration="function (names, ...values) { names.forEach((name, i) => { this[name] = values[i]; }); }",
+                        arguments=[{"value": [b["name"] for b in batch]}, *(_call_argument(b["value"]) for b in batch)])
+                await send("Runtime.releaseObjectGroup", objectGroup=group)
+                logger.info(f"Stored {len(bindings)} module bindings of the Vite build of Steam")
+                return True
 
     async def has_global_var(self, var_name: str, manage_socket: bool = True):
         res = await self.evaluate_js(f"window['{var_name}'] !== null && window['{var_name}'] !== undefined", False, manage_socket)
