@@ -76,7 +76,7 @@ jobs:
       run: |
         git clone --quiet https://github.com/anaveto/decky-frontend-lib.git "$RUNNER_TEMP/decky-ui"
         cd "$RUNNER_TEMP/decky-ui"
-        git checkout --quiet db99c85a19c0f92430790b35c0497431a857ac0d
+        git checkout --quiet d86879b09ae96422f071f6d3d3fd09ea8fb74fdd
         pnpm i --frozen-lockfile
         pnpm run build
         rm -rf "$GITHUB_WORKSPACE/frontend/node_modules/@decky/ui/dist"
