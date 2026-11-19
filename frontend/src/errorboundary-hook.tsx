@@ -24,7 +24,7 @@ class ErrorBoundaryHook extends Logger {
     window.__ERRORBOUNDARY_HOOK_INSTANCE = this;
 
     // valve writes only the sanest of code
-    const exp = /^\(\)=>\([\w$]+\|\|(?:[\w$]+\(|\([\w$]+=)new [\w$]+\),[\w$]+\)$/;
+    const exp = /^\(\)=>\([\w$]+(?:\|\|=new [\w$]+|\|\|(?:[\w$]+\(|\([\w$]+=)new [\w$]+\)),[\w$]+\)$/;
     const initErrorReportingStore = findModuleExport(
       (e) => typeof e == 'function' && e?.toString && exp.test(e.toString()),
     );
