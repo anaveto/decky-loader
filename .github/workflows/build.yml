@@ -72,6 +72,16 @@ jobs:
         npm i -g pnpm
         pnpm i --frozen-lockfile
 
+    - name: Build @decky/ui with Vite support 🛠️
+      run: |
+        git clone --quiet https://github.com/anaveto/decky-frontend-lib.git "$RUNNER_TEMP/decky-ui"
+        cd "$RUNNER_TEMP/decky-ui"
+        git checkout --quiet db99c85a19c0f92430790b35c0497431a857ac0d
+        pnpm i --frozen-lockfile
+        pnpm run build
+        rm -rf "$GITHUB_WORKSPACE/frontend/node_modules/@decky/ui/dist"
+        cp -r dist "$GITHUB_WORKSPACE/frontend/node_modules/@decky/ui/dist"
+
     - name: Build JS Frontend 🛠️
       working-directory: ./frontend
       run: pnpm run build
